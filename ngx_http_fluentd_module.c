@@ -304,31 +304,38 @@ ngx_http_fluentd_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
     uc = l->udp_connection;
 
     if (uc->udp == NULL) {
-        ngx_connection_t *c = ngx_create_udp_connection(cf->cycle, uc->sockaddr, uc->socklen);
-        if (c == NULL) {
-            ngx_log_error(NGX_LOG_ERR, uc->log, 0, "Failed to create UDP connection");
+        // Create a new UDP socket
+        uc->udp = ngx_socket(uc->sockaddr->sa_family, SOCK_DGRAM, 0);
+        if (uc->udp == (ngx_socket_t) -1) {
+            ngx_log_error(NGX_LOG_ERR, &uc->log, 0, "Failed to create UDP socket");
             return NGX_ERROR;
         }
 
-        uc->udp = c;
-        c->data = l;
-        c->read->handler = ngx_http_fluentd_dummy_handler;
-        c->read->resolver = 0;
+        // Connect the UDP socket
+        if (ngx_connect(uc->udp, uc->sockaddr, uc->socklen) == -1) {
+            ngx_log_error(NGX_LOG_ERR, &uc->log, ngx_socket_errno,
+                          "Failed to connect UDP socket");
+            ngx_close_socket(uc->udp);
+            uc->udp = NULL;
+            return NGX_ERROR;
+        }
+
+        // Set up event handlers (if needed)
+        uc->udp->data = l;
+        uc->udp->read->handler = ngx_http_fluentd_dummy_handler;
+        uc->udp->read->resolver = 0;
     }
 
-
+    // Send data via the UDP socket
     n = ngx_send(uc->udp, buf, len);
 
     if (n == -1) {
+        ngx_log_error(NGX_LOG_ERR, &uc->log, ngx_socket_errno, "Failed to send UDP data");
         return NGX_ERROR;
     }
 
-    if ((size_t) n != (size_t) len) {
-#if defined nginx_version && nginx_version >= 8032
+    if ((size_t) n != len) {
         ngx_log_error(NGX_LOG_CRIT, &uc->log, 0, "send() incomplete");
-#else
-        ngx_log_error(NGX_LOG_CRIT, uc->log, 0, "send() incomplete");
-#endif
         return NGX_ERROR;
     }
 
