@@ -291,9 +291,7 @@ ngx_fluentd_cleanup(void *data)
     }
 }
 
-static void ngx_http_fluentd_dummy_handler(ngx_event_t *ev)
-{
-}
+//static void ngx_http_fluentd_dummy_handler(ngx_event_t *ev) { }
 
 static ngx_int_t
 ngx_http_fluentd_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
@@ -304,7 +302,7 @@ ngx_http_fluentd_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
 
     uc = l->udp_connection;
 
-    if (uc->udp == NULL) {
+    if (uc->udp == (ngx_socket_t) -1) {
         // Create a new UDP socket
         s = ngx_socket(uc->sockaddr->sa_family, SOCK_DGRAM, 0);
         if (s == (ngx_socket_t) -1) {
