@@ -304,19 +304,18 @@ ngx_http_fluentd_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
     uc = l->udp_connection;
 
     if (uc->udp == NULL) {
-        if(ngx_udp_connect(uc) != NGX_OK) {
-            if(uc->udp != NULL) {
-                ngx_free_connection(uc->udp);
-                uc->udp = NULL;
-            }
-
+        ngx_connection_t *c = ngx_create_udp_connection(cf->cycle, uc->sockaddr, uc->socklen);
+        if (c == NULL) {
+            ngx_log_error(NGX_LOG_ERR, uc->log, 0, "Failed to create UDP connection");
             return NGX_ERROR;
         }
 
-        uc->udp->data = l;
-        uc->udp->read->handler = ngx_http_fluentd_dummy_handler;
-        uc->udp->read->resolver = 0;
+        uc->udp = c;
+        c->data = l;
+        c->read->handler = ngx_http_fluentd_dummy_handler;
+        c->read->resolver = 0;
     }
+
 
     n = ngx_send(uc->udp, buf, len);
 
