@@ -300,42 +300,39 @@ ngx_http_fluentd_send(ngx_udp_endpoint_t *l, u_char *buf, size_t len)
 {
     ssize_t                    n;
     ngx_resolver_connection_t  *uc;
+    ngx_socket_t                s;  // File descriptor for the UDP socket
 
     uc = l->udp_connection;
 
     if (uc->udp == NULL) {
         // Create a new UDP socket
-        uc->udp = ngx_socket(uc->sockaddr->sa_family, SOCK_DGRAM, 0);
-        if (uc->udp == (ngx_socket_t) -1) {
-            ngx_log_error(NGX_LOG_ERR, &uc->log, 0, "Failed to create UDP socket");
+        s = ngx_socket(uc->sockaddr->sa_family, SOCK_DGRAM, 0);
+        if (s == (ngx_socket_t) -1) {
+            ngx_log_error(NGX_LOG_ERR, uc->log, ngx_socket_errno, "Failed to create UDP socket");
             return NGX_ERROR;
         }
 
         // Connect the UDP socket
-        if (ngx_connect(uc->udp, uc->sockaddr, uc->socklen) == -1) {
-            ngx_log_error(NGX_LOG_ERR, &uc->log, ngx_socket_errno,
-                          "Failed to connect UDP socket");
-            ngx_close_socket(uc->udp);
-            uc->udp = NULL;
+        if (connect(s, uc->sockaddr, uc->socklen) == -1) {
+            ngx_log_error(NGX_LOG_ERR, uc->log, ngx_socket_errno, "Failed to connect UDP socket");
+            ngx_close_socket(s);
             return NGX_ERROR;
         }
 
-        // Set up event handlers (if needed)
-        uc->udp->data = l;
-        uc->udp->read->handler = ngx_http_fluentd_dummy_handler;
-        uc->udp->read->resolver = 0;
+        // Assign the socket to the udp field of the connection
+        uc->udp = s;
     }
 
     // Send data via the UDP socket
-    n = ngx_send(uc->udp, buf, len);
+    n = send(uc->udp, buf, len, 0);
 
     if (n == -1) {
-        ngx_log_error(NGX_LOG_ERR, &uc->log, ngx_socket_errno, "Failed to send UDP data");
+        ngx_log_error(NGX_LOG_ERR, uc->log, ngx_socket_errno, "Failed to send UDP data");
         return NGX_ERROR;
     }
 
     if ((size_t) n != len) {
-        ngx_log_error(NGX_LOG_CRIT, &uc->log, 0, "send() incomplete");
+        ngx_log_error(NGX_LOG_CRIT, uc->log, 0, "send() incomplete");
         return NGX_ERROR;
     }
 
